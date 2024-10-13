@@ -110,8 +110,6 @@ def connect_to_peer():
 
 
 def send_message():
-    global peerSocketSend
-
     message = textEntry.get()
     targetIP = selectedIP.get()
 
@@ -132,28 +130,23 @@ def send_message():
 
 
 def send_image():
-    global addresses
-    image_path = filedialog.askopenfilename(title="Select and image",
-                                            filetypes=[("Files PNG", "*.png"), ("Files JPEG", "*.jpg"),
-                                                       ("All Files", "*.*")])
-    if image_path:
+    imagePath = filedialog.askopenfilename(
+        title="Select an image", filetypes=[("Files PNG", "*.png"), ("Files JPEG", "*.jpg"), ("All Files", "*.*")])
+    if imagePath:
         try:
-            file_name = os.path.basename(image_path)
-
-            for i in range(1, len(addresses)):
+            fileName = os.path.basename(imagePath)
+            targetIP = selectedIP.get()
+            if targetIP in connections:
                 try:
-                    peer_socket = socket(AF_INET, SOCK_STREAM)
-                    peer_socket.connect((addresses[i], clientPort))
-                    update_chat_box(f"Sending image '{file_name}' to {addresses[i]}")
-
-                    peer_socket.send(f"IMG:{file_name}".encode())
-                    send_image_file(peer_socket, image_path)
-
-                    peer_socket.close()
+                    connections[targetIP].send(f"IMG:{fileName}".encode())
+                    send_image_file(connections[targetIP], imagePath)
+                    update_chat_box(f"Sending image '{fileName}' to {targetIP}")
                 except Exception as e:
-                    update_chat_box(f"Error al enviar imagen a {addresses[i]}: {e}")
+                    update_chat_box(f"Error sending image to {targetIP}: {e}")
+            else:
+                update_chat_box(f"\nNo active connection with {targetIP}. Please connect first.")
         except Exception as e:
-            update_chat_box(f"Error seleccionando imagen: {e}")
+            update_chat_box(f"Error selecting the image: {e}")
 
 
 def send_image_file(peer_socket, image_path):
@@ -168,7 +161,6 @@ def receive_image(peer_socket, file_name):
             if not data:
                 break
             img_file.write(data)
-
     update_chat_box(f"Image received: '{file_name}'")
 
 
@@ -188,15 +180,13 @@ def start_connection_server():
     server_host = ipEntry.get() or serverHost
     server_port = portEntry.get() or serverPort
     server_port = int(server_port)
-
     connect_to_server(server_host, server_port)
-
     Thread(target=client_as_server, daemon=True).start()
 
 
 app = Tk()
 app.title("Cliente 1")
-app.geometry("380x800")
+app.geometry("400x800")
 
 selectedIP = StringVar(app)
 selectedIP.set(addresses[0])
