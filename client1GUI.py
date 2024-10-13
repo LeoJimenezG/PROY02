@@ -1,13 +1,13 @@
 from socket import *
 from threading import Thread
 from tkinter import *
-from tkinter import messagebox, filedialog, OptionMenu
+from tkinter import filedialog, OptionMenu
 from SEncryption import SymmetricEncryption
 import os
 
-symmetric_en: SymmetricEncryption = SymmetricEncryption()
-key: bytes = symmetric_en.secret_key
-vector: bytes = symmetric_en.initialization_vector
+symmetricEncryption: SymmetricEncryption = SymmetricEncryption()
+key: bytes = symmetricEncryption.secret_key
+vector: bytes = symmetricEncryption.initialization_vector
 
 buffer: int = 32768
 addresses = [""]
@@ -15,9 +15,6 @@ clientPort: int = 6001
 
 serverHost: str = "192.168.100.18"
 serverPort: int = 5002
-
-peerSocketSend: socket
-peerSocketListen: socket
 
 connections = {}
 
@@ -48,8 +45,6 @@ def connect_to_server(server_host, server_port):
 
 
 def client_as_server():
-    global peerSocketListen
-
     clientSocket = socket(AF_INET, SOCK_STREAM)
     clientSocket.bind(("0.0.0.0", clientPort))
     clientSocket.listen(5)
@@ -66,11 +61,15 @@ def client_as_server():
 
 
 def peer_connection(peerSocket):
+    global symmetricEncryption
     try:
         update_ip_menu()
         peerAddress = peerSocket.getpeername()
+        symmetricEncryption.secret_key = peerSocket.recv(len(key))
+        symmetricEncryption.initialization_vector = peerSocket.recv(len(vector))
+
         while True:
-            data = peerSocket.recv(buffer)
+            data = peerSocket.recv(1024)
             if not data:
                 break
 
@@ -78,7 +77,7 @@ def peer_connection(peerSocket):
                 file_name = data[4:].decode()
                 receive_image(peerSocket, file_name)
             else:
-                message = data.decode()
+                message = symmetricEncryption.symmetric_decrypt_AES_CTR(data)
                 update_chat_box(f"\nMessage received from {peerAddress[0]}: {message}")
 
     except Exception as e:
@@ -91,13 +90,12 @@ def peer_connection(peerSocket):
 
 
 def connect_to_peer():
-    global peerSocketSend
-
     try:
         peerSocketSend = socket(AF_INET, SOCK_STREAM)
         peerSocketSend.connect((selectedIP.get(), clientPort))
         update_chat_box(f"\nConnected to client {selectedIP.get()}")
-        peerSocketSend.send("Hi from client 1!".encode())
+        peerSocketSend.send(key)
+        peerSocketSend.send(vector)
 
         connections[selectedIP.get()] = peerSocketSend
 
@@ -121,7 +119,7 @@ def send_message():
     else:
         if targetIP in connections and message:
             try:
-                connections[targetIP].send(message.encode())
+                connections[targetIP].send(symmetricEncryption.symmetric_encrypt_AES_CTR(message.encode()))
                 update_chat_box(f"\nSent: {message}")
             except Exception as e:
                 print(f"Error sending message: {e}")
@@ -186,7 +184,7 @@ def start_connection_server():
 
 app = Tk()
 app.title("Cliente 1")
-app.geometry("400x800")
+app.geometry("375x800")
 
 selectedIP = StringVar(app)
 selectedIP.set(addresses[0])
