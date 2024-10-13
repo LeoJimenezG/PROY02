@@ -19,6 +19,8 @@ serverPort: int = 5002
 peerSocketSend: socket
 peerSocketListen: socket
 
+connections = {}
+
 
 def connect_to_server(server_host, server_port):
     global addresses
@@ -57,6 +59,9 @@ def client_as_server():
     while True:
         peerSocketListen, peerAddressListen = clientSocket.accept()
         update_chat_box(f"\nP2P Client connected from {peerAddressListen[0]}")
+
+        connections[peerAddressListen[0]] = peerSocketListen
+
         Thread(target=peer_connection, args=(peerSocketListen,)).start()
 
 
@@ -73,11 +78,14 @@ def peer_connection(peerSocket):
                 receive_image(peerSocket, file_name)
             else:
                 message = data.decode()
-                update_chat_box(f"\nMessage received from {peerAddress}: {message}")
+                update_chat_box(f"\nMessage received from {peerAddress[0]}: {message}")
 
     except Exception as e:
         print(f"Error receiving: {e}")
     finally:
+        peerAddress = peerSocket.getpeername()[0]
+        if peerAddress in connections:
+            del connections[peerAddress]
         peerSocket.close()
 
 
@@ -90,6 +98,8 @@ def connect_to_peer():
         update_chat_box(f"\nConnected to client {selectedIP.get()}")
         peerSocketSend.send("Hi from client 1!".encode())
 
+        connections[selectedIP.get()] = peerSocketSend
+
         Thread(target=peer_connection, args=(peerSocketSend,)).start()
 
     except Exception as e:
@@ -100,17 +110,22 @@ def send_message():
     global peerSocketSend
 
     message = textEntry.get()
-    if message == "close connection":
+    targetIP = selectedIP.get()
+
+    if message == "close connection" and targetIP in connections:
         update_chat_box(f"\nConnection with {selectedIP.get()} closed!")
-        peerSocketSend.close()
+        connections[targetIP].close()
+        del connections[targetIP]
         selectedIP.set("")
     else:
-        if peerSocketSend and message:
+        if targetIP in connections and message:
             try:
-                peerSocketSend.send(message.encode())
+                connections[targetIP].send(message.encode())
                 update_chat_box(f"\nSent: {message}")
             except Exception as e:
                 print(f"Error sending message: {e}")
+        else:
+            update_chat_box(f"\nNo active connection with {targetIP}. Please connect first.")
 
 
 def send_image():
