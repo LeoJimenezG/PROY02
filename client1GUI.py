@@ -67,6 +67,7 @@ def client_as_server():
 
 def peer_connection(peerSocket):
     try:
+        update_ip_menu()
         peerAddress = peerSocket.getpeername()
         while True:
             data = peerSocket.recv(buffer)
@@ -99,6 +100,8 @@ def connect_to_peer():
         peerSocketSend.send("Hi from client 1!".encode())
 
         connections[selectedIP.get()] = peerSocketSend
+
+        update_ip_menu()
 
         Thread(target=peer_connection, args=(peerSocketSend,)).start()
 
@@ -175,6 +178,12 @@ def update_chat_box(message):
     chatBox.config(state=DISABLED)
 
 
+def update_ip_menu():
+    ipMenu['menu'].delete(0, 'end')
+    for address in connections.keys():
+        ipMenu['menu'].add_command(label=address, command=lambda value=address: selectedIP.set(value))
+
+
 def start_connection_server():
     server_host = ipEntry.get() or serverHost
     server_port = portEntry.get() or serverPort
@@ -187,7 +196,7 @@ def start_connection_server():
 
 app = Tk()
 app.title("Cliente 1")
-app.geometry("375x800")
+app.geometry("380x800")
 
 selectedIP = StringVar(app)
 selectedIP.set(addresses[0])
