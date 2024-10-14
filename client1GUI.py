@@ -69,7 +69,7 @@ def peer_connection(peerSocket):
         peerAddress = peerSocket.getpeername()
 
         while True:
-            messageLengthBytes = peerSocket.recv(4)
+            messageLengthBytes = peerSocket.recv(8)
             if not messageLengthBytes:
                 break
             messageLength = int.from_bytes(messageLengthBytes, byteorder='big')
@@ -77,10 +77,10 @@ def peer_connection(peerSocket):
             if not data:
                 break
             if data.startswith(b'\x89PNG'):
-                file_name = data[4:].decode()
-                receive_image(peerSocket, file_name)
+                file_name = data[len(b'\x89PNG'):].decode()
+                receive_image(peerSocket, file_name, messageLength)
             else:
-                message = symmetricEncryption.symmetric_decrypt_AES_CTR(data)
+                message = symmetricEncryption.symmetric_decrypt_AES_CTR(data).decode()
                 update_chat_box(f"\nMessage received from {peerAddress[0]}: {message}")
 
     except Exception as e:
@@ -123,7 +123,8 @@ def send_message():
         if targetIP in connections and message:
             try:
                 encryptedMessage = symmetricEncryption.symmetric_encrypt_AES_CTR(message.encode())
-                messageLength = len(encryptedMessage).to_bytes(4, byteorder='big')
+                messageLength = len(encryptedMessage).to_bytes(8, byteorder='big')
+                print(encryptedMessage)
                 connections[targetIP].send(messageLength)
                 connections[targetIP].send(encryptedMessage)
                 update_chat_box(f"\nSent: {message}")
@@ -161,14 +162,12 @@ def send_image_file(peer_socket, image_path):
             peer_socket.sendall(data)
 
 
-def receive_image(peer_socket, file_name):
-    fileSizeBytes = peer_socket.recv(8)
-    fileSize = int.from_bytes(fileSizeBytes, 'big')
+def receive_image(peer_socket, file_name, file_size):
     bytesReceived = 0
 
     with open(f"received_{file_name}", "wb") as img_file:
-        while bytesReceived < fileSize:
-            data = peer_socket.recv(min(buffer, fileSize - bytesReceived))
+        while bytesReceived < file_size:
+            data = peer_socket.recv(min(buffer, file_size - bytesReceived))
             if not data:
                 break
             img_file.write(data)
