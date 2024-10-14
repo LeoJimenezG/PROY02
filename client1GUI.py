@@ -57,16 +57,16 @@ def client_as_server():
 
         connections[peerAddressListen[0]] = peerSocketListen
 
+        symmetricEncryption.secret_key = peerSocketListen.recv(32)
+        symmetricEncryption.initialization_vector = peerSocketListen.recv(16)
+
         Thread(target=peer_connection, args=(peerSocketListen,)).start()
 
 
 def peer_connection(peerSocket):
-    global symmetricEncryption
     try:
         update_ip_menu()
         peerAddress = peerSocket.getpeername()
-        symmetricEncryption.secret_key = peerSocket.recv(32)
-        symmetricEncryption.initialization_vector = peerSocket.recv(16)
 
         while True:
             messageLengthBytes = peerSocket.recv(4)
@@ -76,7 +76,7 @@ def peer_connection(peerSocket):
             data = peerSocket.recv(messageLength)
             if not data:
                 break
-            if data[:4] == b'IMG:':
+            if data.startswith(b'\x89PNG'):
                 file_name = data[4:].decode()
                 receive_image(peerSocket, file_name)
             else:
@@ -142,7 +142,6 @@ def send_image():
             targetIP = selectedIP.get()
             if targetIP in connections:
                 try:
-                    connections[targetIP].send(f"IMG:{fileName}".encode())
                     send_image_file(connections[targetIP], imagePath)
                     update_chat_box(f"Sending image '{fileName}' to {targetIP}")
                 except Exception as e:
