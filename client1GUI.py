@@ -73,14 +73,24 @@ def peer_connection(peerSocket):
             if not messageLengthBytes:
                 break
             messageLength = int.from_bytes(messageLengthBytes, byteorder='big')
-            data = peerSocket.recv(messageLength)
-            if not data:
-                break
-            if data.startswith(b'\x89PNG'):
-                file_name = data[len(b'\x89PNG'):].decode()
-                receive_image(peerSocket, file_name, messageLength)
+            initialData = peerSocket.recv(buffer)
+            if initialData.startswith(b'\x89PNG'):
+                fileNameEnd = initialData.index(b'\x89PNG', 1)
+                fileName = initialData[4:fileNameEnd].decode()
+                remainingLength = messageLength - len(initialData)
+                with open(f"received_{fileName}", "wb") as img_file:
+                    img_file.write(initialData[fileNameEnd:])
+                    while remainingLength > 0:
+                        chunk = peerSocket.recv(min(buffer, remainingLength))
+                        if not chunk:
+                            break
+                        img_file.write(chunk)
+                        remainingLength -= len(chunk)
+                update_chat_box(f"Image received: '{fileName}'")
             else:
-                message = symmetricEncryption.symmetric_decrypt_AES_CTR(data).decode()
+                # It's a text message
+                full_data = initialData + peerSocket.recv(messageLength - len(initialData))
+                message = symmetricEncryption.symmetric_decrypt_AES_CTR(full_data).decode()
                 update_chat_box(f"\nMessage received from {peerAddress[0]}: {message}")
 
     except Exception as e:
@@ -138,41 +148,30 @@ def send_image():
     imagePath = filedialog.askopenfilename(
         title="Select an image", filetypes=[("Files PNG", "*.png"), ("Files JPEG", "*.jpg"), ("All Files", "*.*")])
     if imagePath:
-        try:
-            fileName = os.path.basename(imagePath)
-            targetIP = selectedIP.get()
-            if targetIP in connections:
-                try:
-                    send_image_file(connections[targetIP], imagePath)
-                    update_chat_box(f"Sending image '{fileName}' to {targetIP}")
-                except Exception as e:
-                    update_chat_box(f"Error sending image to {targetIP}: {e}")
+        fileName = os.path.basename(imagePath)
+        targetIP = selectedIP.get()
+        if targetIP in connections:
+            if send_image_file(connections[targetIP], imagePath):
+                update_chat_box(f"Image '{fileName}' successfully sent to {targetIP}")
             else:
-                update_chat_box(f"\nNo active connection with {targetIP}. Please connect first.")
-        except Exception as e:
-            update_chat_box(f"Error selecting the image: {e}")
+                update_chat_box(f"Failed to send image '{fileName}' to {targetIP}")
+        else:
+            update_chat_box(f"\nNo active connection with {targetIP}. Please connect first.")
 
 
 def send_image_file(peer_socket, image_path):
-    with open(image_path, "rb") as img_file:
-        fileSize = os.path.getsize(image_path)
-        peer_socket.sendall(fileSize.to_bytes(8, 'big'))
-
-        while data := img_file.read(buffer):
-            peer_socket.sendall(data)
-
-
-def receive_image(peer_socket, file_name, file_size):
-    bytesReceived = 0
-
-    with open(f"received_{file_name}", "wb") as img_file:
-        while bytesReceived < file_size:
-            data = peer_socket.recv(min(buffer, file_size - bytesReceived))
-            if not data:
-                break
-            img_file.write(data)
-            bytesReceived += len(data)
-    update_chat_box(f"Image received: '{file_name}'")
+    try:
+        with open(image_path, "rb") as img_file:
+            file_name = os.path.basename(image_path)
+            file_size = os.path.getsize(image_path)
+            header = b'\x89PNG' + file_name.encode()
+            message_length = (len(header) + file_size).to_bytes(8, byteorder='big')
+            peer_socket.sendall(message_length)
+            peer_socket.sendall(header)
+            while data := img_file.read(buffer):
+                peer_socket.sendall(data)
+    except Exception as e:
+        print(f"Error sending image: {e}")
 
 
 def update_chat_box(message):
